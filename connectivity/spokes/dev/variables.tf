@@ -23,7 +23,7 @@ variable "vnet_name" {
 }
 
 variable "vnet_address_space" {
-    description "dev spoke vnet address space"
+    description = "dev spoke vnet address space"
     type = list(string)
     default = ["10.1.0.0/16"]
 }
@@ -82,7 +82,7 @@ variable "tfstate_resource_group_name" {
 }
 
 variable "tfstate_storage_account_name" {
-    decription = "Storage account name of remote state storage account generated during boottrap phasse"
+    description = "Storage account name of remote state storage account generated during boot strap phase"
     type = string
     # fill from bootstrap output
 }
