@@ -44,9 +44,9 @@ resource "azurerm_management_group" "lz_shared" {
   parent_management_group_id = azurerm_management_group.landing_zone.id
 }
 
-resource "azurerm_management_group" "lz_sandbox" {
-  display_name = "${local.org_prefix}-lz-sandbox"
-  name = "${local.org_prefix}-lz-sandbox"
+resource "azurerm_management_group" "lz_prod" {
+  display_name = "${local.org_prefix}-lz-prod"
+  name = "${local.org_prefix}-lz-prod"
   parent_management_group_id = azurerm_management_group.landing_zone.id
 }
 
@@ -65,7 +65,7 @@ output "management_group_ids" {
     security = azurerm_management_group.security.id
     connectivity = azurerm_management_group.connectivity.id
     lz_shared = azurerm_management_group.lz_shared.id
-    lz_sandbox = azurerm_management_group.lz_sandbox.id
+    lz_prod = azurerm_management_group.lz_prod.id
     lz_dev = azurerm_management_group.lz_dev.id
   }
 }
