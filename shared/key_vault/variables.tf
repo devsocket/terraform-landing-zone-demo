@@ -1,13 +1,13 @@
 variable "location" {
   description = "Azure region for Key Vault."
   type        = string
-  default     = "eastus"
+  default     = "canadacentral"
 }
 
 variable "resource_group_name" {
   description = "Resource group for Key Vault."
   type        = string
-  default     = "rg-shared-keyvault"
+  default     = "rg-cc-shared-keyvault"
 }
 
 variable "key_vault_name" {

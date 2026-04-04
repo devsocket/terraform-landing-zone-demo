@@ -17,7 +17,7 @@ output "vnet_address_space" {
 
 output "aks_subnet_id" {
     description = "Aks node pool subnet id"
-    output = module.spoke_vnet.aks_subnet_id
+    value = module.spoke_vnet.aks_subnet_id
 }
 
 output "aks_subnet_cidr" {
@@ -35,7 +35,7 @@ output "appgw_subnet_cidr" {
     value = module.spoke_vnet.gateway_subnet_cidr
 }
 output "private_endpoints_subnet_id" {
-    desription = "Private Endpoints subnet id"
+    description = "Private Endpoints subnet id"
     value = module.spoke_vnet.private_endpoints_subnet_id
 }
 

@@ -16,7 +16,7 @@ terraform {
 }
 
 # ACR deploys into the shared subscription
-privider "azurerm" {
+provider "azurerm" {
     features {}
     # export ARM_SUBSCRIPTION_ID = "<devsocket-lz-shared-sub-id>""
 }
