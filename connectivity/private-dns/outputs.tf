@@ -19,7 +19,7 @@ output "resource_group_name" {
 }
 
 # VNet Links
-ouput "hub_vnet_link_ids" {
+output "hub_vnet_link_ids" {
     description = "Map of zone name to Hub Vnet link resource ID"
     value = module.private_dns.hub_vnet_link_ids
 }
