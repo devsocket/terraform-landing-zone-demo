@@ -11,7 +11,7 @@ terraform {
       resource_group_name = "rg-tfstate-devsocket"
       storage_account_name = "stgtfstatedevsocket"
       container_name       = "connectivty/tfstate"
-      key = "connectivity/spoke.tfstate"
+      key = "connectivity/spokes/dev.tfstate"
     }
 }
 
