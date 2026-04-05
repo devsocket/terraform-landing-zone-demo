@@ -32,7 +32,7 @@ output "kubelet_identity_object_id" {
 }
 
 output "kubelet_identity_client_id" {
-    description "Kubelet identity client ID. Used in workload identity federation configuration"
+    description = "Kubelet identity client ID. Used in workload identity federation configuration"
     value = module.aks.kubelet_identity_client_id
 }
 
