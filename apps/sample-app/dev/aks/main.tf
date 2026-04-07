@@ -40,7 +40,7 @@ data "azurerm_terraform_remote_state" "appgw" {
 # AKS cluster
 
 module "aks" {
-    source = "git::https://github.com/devsocket/terraform-common-modules.git/modules/app_platform/aks"
+    source = "git::https://github.com/devsocket/terraform-common-modules.git/modules/app_platform/aks?ref=v0.2.0"
     resource_group_name = var.resource_group_name
     location = var.location
     cluster_name = var.cluster_name

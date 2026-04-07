@@ -1,0 +1,562 @@
+# Runs terraform plan on any layer touched by a pull request
+# Posts plan output as a PR comment for review
+# No apply — read-only operation
+
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'shared/monitoring/log_analytics/**'
+      - 'shared/acr/**'
+      - 'shared/key_vault/**'
+      - 'shared/storage/**'
+      - 'connectivity/hub/**'
+      - 'connectivity/spokes/**'
+      - 'connectivity/private-dns/**'
+      - 'apps/sample-app/dev/appgw/**'
+      - 'apps/sample-app/dev/aks/**'
+
+permissions:
+  id-token: write # requried for OIDC token request
+  contents: read # required to checkout code
+  pull-requests: write #requird to post pr comments
+
+env:
+  TF_VERSION: "1.6.0"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: "true"
+  TFSTATE_RG: ${{ secrets.TFSTATE_RG }}
+  TFSTATE_SA: ${{ secrets.TFSTATE_SA }}
+
+jobs:
+  # Detect changed layers
+  detect-changes:
+    name: Detect changed layers
+    runs-on: ubuntu-latest
+    outputs:
+      log_analytics: ${{steps.filter.outputs.log_analytics}}
+      hub: ${{steps.filter.outputs.hub}}
+      spoke_dev: ${{steps.filter.outputs.spoke_dev}}
+      private_dns: ${{steps.filter.outputs.private_dns}}
+      acr: ${{steps.filter.outputs.acr}}
+      key_vault: ${{steps.filter.outputs.key_vault}}
+      storage: ${{steps.filter.outputs.storage}}
+      appgw: ${{steps.filter.outputs.appgw}}
+      aks: ${{steps.filter.outputs.aks}}
+
+  steps:
+    - name: checkout
+      uses: actions/checkout@v4
+    
+    - name: detect changed paths
+      id: filter
+      uses: dorny/path-filter@v3
+      with:
+        filters: |
+          log_analytics:
+            - 'shared/monitoring/log_analytics/**'
+          hub:
+            - 'connectivity/hub/**'
+          spoke_dev:
+            - 'connectivity/spokes/dev/**'
+          private_dns:
+            - 'connectivity/private-dns/**'
+          acr:
+            - 'shared/acr/**'
+          key_vault:
+            - 'shared/key_vault/**'
+          storage:
+            - 'shared/storage/**'
+          appgw:
+            - 'apps/sample-app/dev/appgw/**'
+          aks:
+            - 'apps/sample-app/dev/aks/**'
+# Plan template
+# Each layer job follows the same pattern:
+# 1. Checkout
+# 2. Setup Terraform
+# 3. OIDC login to Azure
+# 4. terraform init with backend config
+# 5. terraform plan
+# 6. Post plan output as PR comment
+
+  plan-log-analytics:
+    name: Plan /shared/monitoring/log_analytics
+    needs: detect-changes
+    if: needs.detect-changes.outputs.log_analytics == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.PLATFORM_SUB_ID }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.PLATFORM_SUB_ID }}
+      
+      - name: Terraform Init
+        working-directory: shared/monitoring/log_analytics
+        run: |
+          terraform init \
+            -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}"
+            -backend-config="storage_account_name=${{env.TFSTATE_SA }}"
+            -backend-config="container_name=tfstate"
+      
+      - name: Terraform Plan
+        id: plan
+        working-directory: shared/monitoring/log_analytics
+        run: |
+          terraform plan -input=false -no-color 2>&1 | tee /tmp/plan.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUPUT
+        continue-on-error: true
+      
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf-8');
+            const truncated = plan.length > 65000
+              ? plan.substring(0, 65000) + '\n... (truncated)'
+              : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`shared/monitoring/log_analytics\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+  
+  plan-hub:
+    name: Plan / connectivity/hub
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hub == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/hub
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: connectivity/hub
+        run: terraform plan -input=false -no-color 2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`connectivity/hub\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-spoke-dev:
+    name: Plan / connectivity/spokes/dev
+    needs: detect-changes
+    if: needs.detect-changes.outputs.spoke_dev == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`connectivity/spokes/dev\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-private-dns:
+    name: Plan / connectivity/private-dns
+    needs: detect-changes
+    if: needs.detect-changes.outputs.private_dns == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/private-dns
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: connectivity/private-dns
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`connectivity/private-dns\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-acr:
+    name: Plan / shared/acr
+    needs: detect-changes
+    if: needs.detect-changes.outputs.acr == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/acr
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: shared/acr
+        run: terraform plan -input=false -no-color 2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`shared/acr\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-key-vault:
+    name: Plan / shared/key_vault
+    needs: detect-changes
+    if: needs.detect-changes.outputs.key_vault == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/key_vault
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: shared/key_vault
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`shared/key_vault\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-storage:
+    name: Plan / shared/storage
+    needs: detect-changes
+    if: needs.detect-changes.outputs.storage == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/storage
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: shared/storage
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`shared/storage\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-appgw:
+    name: Plan / apps/sample-app/dev/appgw
+    needs: detect-changes
+    if: needs.detect-changes.outputs.appgw == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`apps/sample-app/dev/appgw\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-aks:
+    name: Plan / apps/sample-app/dev/aks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.aks == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        id: plan
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform plan -input=false -no-color \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            2>&1 | tee /tmp/plan.txt
+        continue-on-error: true
+      - name: Post Plan Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            const truncated = plan.length > 65000 ? plan.substring(0, 65000) + '\n... (truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Plan: \`apps/sample-app/dev/aks\`\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1

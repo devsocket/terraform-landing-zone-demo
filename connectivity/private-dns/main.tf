@@ -23,7 +23,7 @@ data "terraform_remote_state" "spoke_dev" {
 # Private DNS zones are deployed in the connectivity subscription, so we can pull the hub vnet details from the hub remote state and create the necessary private endpoint connections and virtual network links to the hub vnet from this module, without needing to set up an additional provider or deploy any resources in the spoke subscriptions
 
 module "private_dns" {
-    source = "github.com/devsocket/terraform-common-modules/modules/connectivity/private_dns"
+    source = "github.com/devsocket/terraform-common-modules/modules/connectivity/private_dns?ref=v0.2.0"
 
     location = var.location
     resource_group_name = var.resource_group_name

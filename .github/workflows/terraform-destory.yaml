@@ -1,0 +1,511 @@
+# Manual destroy workflow — never triggered automatically
+# Destroys all layers in reverse dependency order
+#
+# Trigger: GitHub Actions UI → Run workflow
+# Inputs:
+#   confirm    — must type 'destroy' to proceed
+#   dry_run    — run plan -destroy only, no actual destroy
+#   from_layer — optional, resume from a specific layer
+
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'destroy' to confirm. Any other value cancels."
+        required: true
+        default: ""
+      dry_run:
+        description: "Dry run — plan destroy only, no actual destroy"
+        required: true
+        type: boolean
+        default: true
+      from_layer:
+        description: "Resume from layer (optional). Leave blank to destroy all."
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - "apps/sample-app/dev/aks"
+          - "apps/sample-app/dev/appgw"
+          - "shared/storage"
+          - "shared/key_vault"
+          - "shared/acr"
+          - "connectivity/private-dns"
+          - "connectivity/spokes/dev"
+          - "connectivity/hub"
+          - "shared/monitoring/log_analytics"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: "1.6.0"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: "true"
+  TFSTATE_RG: ${{ secrets.TFSTATE_RG }}
+  TFSTATE_SA: ${{ secrets.TFSTATE_SA }}
+
+jobs:
+
+  # ── Confirmation gate ─────────────────────────────────────────────────────
+
+  confirm:
+    name: Confirm Destroy Intent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation input
+        run: |
+          if [[ "${{ github.event.inputs.confirm }}" != "destroy" ]]; then
+            echo "❌ Confirmation failed — input was '${{ github.event.inputs.confirm }}'"
+            echo "   You must type exactly 'destroy' to proceed."
+            exit 1
+          fi
+          echo "✅ Confirmation accepted"
+
+      - name: Log destroy intent
+        run: |
+          echo "══════════════════════════════════════════════"
+          echo "  DESTROY triggered by: ${{ github.actor }}"
+          echo "  Dry run: ${{ github.event.inputs.dry_run }}"
+          echo "  From layer: ${{ github.event.inputs.from_layer || 'beginning' }}"
+          echo "  Timestamp: $(date -u)"
+          echo "══════════════════════════════════════════════"
+
+  # ── Destroy AKS ───────────────────────────────────────────────────────────
+
+  destroy-aks:
+    name: Destroy / apps/sample-app/dev/aks
+    needs: confirm
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if layer should be skipped
+        id: skip_check
+        run: |
+          FROM="${{ github.event.inputs.from_layer }}"
+          LAYERS=(
+            "apps/sample-app/dev/aks"
+            "apps/sample-app/dev/appgw"
+            "shared/storage"
+            "shared/key_vault"
+            "shared/acr"
+            "connectivity/private-dns"
+            "connectivity/spokes/dev"
+            "connectivity/hub"
+            "shared/monitoring/log_analytics"
+          )
+          if [[ -z "$FROM" ]]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+          else
+            SKIP=true
+            for layer in "${LAYERS[@]}"; do
+              if [[ "$layer" == "$FROM" ]]; then
+                SKIP=false
+              fi
+              if [[ "$layer" == "apps/sample-app/dev/aks" && "$SKIP" == "true" ]]; then
+                echo "skip=true" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            done
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Terraform
+        if: steps.skip_check.outputs.skip != 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login via OIDC
+        if: steps.skip_check.outputs.skip != 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+
+      - name: Terraform Init
+        if: steps.skip_check.outputs.skip != 'true'
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+
+      - name: Terraform Plan Destroy
+        if: steps.skip_check.outputs.skip != 'true'
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+
+      - name: Terraform Apply Destroy
+        if: |
+          steps.skip_check.outputs.skip != 'true' &&
+          github.event.inputs.dry_run == 'false'
+        working-directory: apps/sample-app/dev/aks
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy App Gateway ───────────────────────────────────────────────────
+
+  destroy-appgw:
+    name: Destroy / apps/sample-app/dev/appgw
+    needs: [confirm, destroy-aks]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: apps/sample-app/dev/appgw
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Storage ───────────────────────────────────────────────────────
+
+  destroy-storage:
+    name: Destroy / shared/storage
+    needs: [confirm, destroy-appgw]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/storage
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: shared/storage
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: shared/storage
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Key Vault ─────────────────────────────────────────────────────
+
+  destroy-key-vault:
+    name: Destroy / shared/key_vault
+    needs: [confirm, destroy-appgw]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/key_vault
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: shared/key_vault
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: shared/key_vault
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy ACR ───────────────────────────────────────────────────────────
+
+  destroy-acr:
+    name: Destroy / shared/acr
+    needs: [confirm, destroy-appgw]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/acr
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: shared/acr
+        run: terraform plan -destroy -input=false -no-color -out=tfplan
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: shared/acr
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Private DNS ───────────────────────────────────────────────────
+
+  destroy-private-dns:
+    name: Destroy / connectivity/private-dns
+    needs: [confirm, destroy-storage, destroy-key-vault, destroy-acr]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/private-dns
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: connectivity/private-dns
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: connectivity/private-dns
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Spoke VNet ────────────────────────────────────────────────────
+
+  destroy-spoke-dev:
+    name: Destroy / connectivity/spokes/dev
+    needs: [confirm, destroy-private-dns]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform plan -destroy -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}"
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: connectivity/spokes/dev
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Hub VNet ──────────────────────────────────────────────────────
+
+  destroy-hub:
+    name: Destroy / connectivity/hub
+    needs: [confirm, destroy-spoke-dev]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/hub
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: connectivity/hub
+        run: terraform plan -destroy -input=false -no-color -out=tfplan
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: connectivity/hub
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Destroy Log Analytics ─────────────────────────────────────────────────
+
+  destroy-log-analytics:
+    name: Destroy / shared/monitoring/log_analytics
+    needs: [confirm, destroy-hub]
+    if: always() && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.PLATFORM_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.PLATFORM_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/monitoring/log_analytics
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan Destroy
+        working-directory: shared/monitoring/log_analytics
+        run: terraform plan -destroy -input=false -no-color -out=tfplan
+      - name: Terraform Apply Destroy
+        if: github.event.inputs.dry_run == 'false'
+        working-directory: shared/monitoring/log_analytics
+        run: terraform apply -input=false -no-color tfplan
+
+  # ── Summary ───────────────────────────────────────────────────────────────
+
+  summary:
+    name: Destroy Summary
+    needs:
+      - destroy-aks
+      - destroy-appgw
+      - destroy-storage
+      - destroy-key-vault
+      - destroy-acr
+      - destroy-private-dns
+      - destroy-spoke-dev
+      - destroy-hub
+      - destroy-log-analytics
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print summary
+        run: |
+          echo "══════════════════════════════════════════════"
+          echo "  DESTROY SUMMARY"
+          echo "  Triggered by: ${{ github.actor }}"
+          echo "  Dry run: ${{ github.event.inputs.dry_run }}"
+          echo "  Timestamp: $(date -u)"
+          echo "══════════════════════════════════════════════"
+          echo ""
+          echo "  ⚠️  Management groups and subscriptions"
+          echo "      were NOT destroyed — clean up manually"
+          echo "      in the Azure portal if needed."
+          echo "══════════════════════════════════════════════"

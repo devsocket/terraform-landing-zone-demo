@@ -1,0 +1,460 @@
+# Runs terraform apply on any layer changed by a push to main
+# Jobs run in dependency order — each layer waits for upstream layers
+# Only runs apply if the layer's files actually changed
+
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'shared/monitoring/log_analytics/**'
+      - 'shared/acr/**'
+      - 'shared/key_vault/**'
+      - 'shared/storage/**'
+      - 'connectivity/hub/**'
+      - 'connectivity/spokes/dev/**'
+      - 'connectivity/private-dns/**'
+      - 'apps/sample-app/dev/appgw/**'
+      - 'apps/sample-app/dev/aks/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: "1.6.0"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: "true"
+  TFSTATE_RG: ${{ secrets.TFSTATE_RG }}
+  TFSTATE_SA: ${{ secrets.TFSTATE_SA }}
+
+jobs:
+
+  # Detect changed layers 
+
+  detect-changes:
+    name: Detect Changed Layers
+    runs-on: ubuntu-latest
+    outputs:
+      log_analytics: ${{ steps.filter.outputs.log_analytics }}
+      hub:           ${{ steps.filter.outputs.hub }}
+      spoke_dev:     ${{ steps.filter.outputs.spoke_dev }}
+      private_dns:   ${{ steps.filter.outputs.private_dns }}
+      acr:           ${{ steps.filter.outputs.acr }}
+      key_vault:     ${{ steps.filter.outputs.key_vault }}
+      storage:       ${{ steps.filter.outputs.storage }}
+      appgw:         ${{ steps.filter.outputs.appgw }}
+      aks:           ${{ steps.filter.outputs.aks }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            log_analytics:
+              - 'shared/monitoring/log_analytics/**'
+            hub:
+              - 'connectivity/hub/**'
+            spoke_dev:
+              - 'connectivity/spokes/dev/**'
+            private_dns:
+              - 'connectivity/private-dns/**'
+            acr:
+              - 'shared/acr/**'
+            key_vault:
+              - 'shared/key_vault/**'
+            storage:
+              - 'shared/storage/**'
+            appgw:
+              - 'apps/sample-app/dev/appgw/**'
+            aks:
+              - 'apps/sample-app/dev/aks/**'
+
+  # Layer 1 — Log Analytics
+
+  apply-log-analytics:
+    name: Apply / shared/monitoring/log_analytics
+    needs: detect-changes
+    if: needs.detect-changes.outputs.log_analytics == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.PLATFORM_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.PLATFORM_SUB_ID }}
+
+      - name: Terraform Init
+        working-directory: shared/monitoring/log_analytics
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+
+      - name: Terraform Plan
+        working-directory: shared/monitoring/log_analytics
+        run: terraform plan -input=false -no-color -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: shared/monitoring/log_analytics
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 2 — Hub VNet
+
+  apply-hub:
+    name: Apply / connectivity/hub
+    needs: [detect-changes, apply-log-analytics]
+    # Run if hub changed OR if log_analytics just ran (downstream dependency)
+    # always() allows this job to run even if apply-log-analytics was skipped
+    if: |
+      always() &&
+      needs.detect-changes.outputs.hub == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/hub
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: connectivity/hub
+        run: terraform plan -input=false -no-color -out=tfplan
+      - name: Terraform Apply
+        working-directory: connectivity/hub
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 3 — Spoke VNet
+
+  apply-spoke-dev:
+    name: Apply / connectivity/spokes/dev
+    needs: [detect-changes, apply-hub]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.spoke_dev == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: connectivity/spokes/dev
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}"
+      - name: Terraform Apply
+        working-directory: connectivity/spokes/dev
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 3b — Private DNS
+
+  apply-private-dns:
+    name: Apply / connectivity/private-dns
+    needs: [detect-changes, apply-spoke-dev]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.private_dns == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CONNECTIVITY_SUB_ID }}
+      - name: Terraform Init
+        working-directory: connectivity/private-dns
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: connectivity/private-dns
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply
+        working-directory: connectivity/private-dns
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 4 — ACR
+
+  apply-acr:
+    name: Apply / shared/acr
+    needs: [detect-changes, apply-private-dns]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.acr == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/acr
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: shared/acr
+        run: terraform plan -input=false -no-color -out=tfplan
+      - name: Terraform Apply
+        working-directory: shared/acr
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 4b — Key Vault
+
+  apply-key-vault:
+    name: Apply / shared/key_vault
+    needs: [detect-changes, apply-private-dns]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.key_vault == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/key_vault
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: shared/key_vault
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply
+        working-directory: shared/key_vault
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 4c — Storage
+
+  apply-storage:
+    name: Apply / shared/storage
+    needs: [detect-changes, apply-private-dns]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.storage == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_SHARED_SUB_ID }}
+      - name: Terraform Init
+        working-directory: shared/storage
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: shared/storage
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply
+        working-directory: shared/storage
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 5 — App Gateway
+
+  apply-appgw:
+    name: Apply / apps/sample-app/dev/appgw
+    needs: [detect-changes, apply-acr, apply-key-vault, apply-storage]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.appgw == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: apps/sample-app/dev/appgw
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply
+        working-directory: apps/sample-app/dev/appgw
+        run: terraform apply -input=false -no-color tfplan
+
+  # Layer 5b — AKS
+
+  apply-aks:
+    name: Apply / apps/sample-app/dev/aks
+    needs: [detect-changes, apply-appgw]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.aks == 'true' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.LZ_DEV_SUB_ID }}
+      - name: Terraform Init
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
+            -backend-config="container_name=tfstate"
+      - name: Terraform Plan
+        working-directory: apps/sample-app/dev/aks
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+      - name: Terraform Apply
+        working-directory: apps/sample-app/dev/aks
+        run: terraform apply -input=false -no-color tfplan
