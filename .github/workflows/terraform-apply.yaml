@@ -108,7 +108,8 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
 
       - name: Terraform Plan
         working-directory: shared/monitoring/log_analytics
@@ -152,7 +153,8 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: connectivity/hub
         run: terraform plan -input=false -no-color -out=tfplan
@@ -192,14 +194,16 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: connectivity/spokes/dev
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
             -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
-            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}"
+            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: connectivity/spokes/dev
         run: terraform apply -input=false -no-color tfplan
@@ -236,13 +240,15 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: connectivity/private-dns
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
-            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: connectivity/private-dns
         run: terraform apply -input=false -no-color tfplan
@@ -279,7 +285,8 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: shared/acr
         run: terraform plan -input=false -no-color -out=tfplan
@@ -319,13 +326,15 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: shared/key_vault
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
-            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: shared/key_vault
         run: terraform apply -input=false -no-color tfplan
@@ -362,13 +371,15 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: shared/storage
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
-            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: shared/storage
         run: terraform apply -input=false -no-color tfplan
@@ -405,13 +416,15 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: apps/sample-app/dev/appgw
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
-            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: apps/sample-app/dev/appgw
         run: terraform apply -input=false -no-color tfplan
@@ -448,13 +461,15 @@ jobs:
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TFSTATE_RG }}" \
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
-            -backend-config="container_name=tfstate"
+            -backend-config="container_name=tfstate" \
+            -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Plan
         working-directory: apps/sample-app/dev/aks
         run: |
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
-            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}"
+            -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
       - name: Terraform Apply
         working-directory: apps/sample-app/dev/aks
         run: terraform apply -input=false -no-color tfplan
