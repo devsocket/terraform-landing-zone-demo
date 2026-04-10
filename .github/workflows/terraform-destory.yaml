@@ -79,6 +79,7 @@ jobs:
   # ── Destroy AKS ───────────────────────────────────────────────────────────
 
   destroy-aks:
+    if: github.actor == 'devsocket'
     name: Destroy / apps/sample-app/dev/aks
     needs: confirm
     runs-on: ubuntu-latest
@@ -165,7 +166,7 @@ jobs:
   destroy-appgw:
     name: Destroy / apps/sample-app/dev/appgw
     needs: [confirm, destroy-aks]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -208,7 +209,7 @@ jobs:
   destroy-storage:
     name: Destroy / shared/storage
     needs: [confirm, destroy-appgw]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -251,7 +252,7 @@ jobs:
   destroy-key-vault:
     name: Destroy / shared/key_vault
     needs: [confirm, destroy-appgw]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -294,7 +295,7 @@ jobs:
   destroy-acr:
     name: Destroy / shared/acr
     needs: [confirm, destroy-appgw]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -333,7 +334,7 @@ jobs:
   destroy-private-dns:
     name: Destroy / connectivity/private-dns
     needs: [confirm, destroy-storage, destroy-key-vault, destroy-acr]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -376,7 +377,7 @@ jobs:
   destroy-spoke-dev:
     name: Destroy / connectivity/spokes/dev
     needs: [confirm, destroy-private-dns]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -420,7 +421,7 @@ jobs:
   destroy-hub:
     name: Destroy / connectivity/hub
     needs: [confirm, destroy-spoke-dev]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -459,7 +460,7 @@ jobs:
   destroy-log-analytics:
     name: Destroy / shared/monitoring/log_analytics
     needs: [confirm, destroy-hub]
-    if: always() && !contains(needs.*.result, 'failure')
+    if: always() && github.actor == 'devsocket' &&  !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
     env:

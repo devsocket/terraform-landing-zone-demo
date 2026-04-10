@@ -7,7 +7,7 @@ name: Terraform Apply
 on:
   push:
     branches:
-      - main
+      - upgrade/*
     paths:
       - 'shared/monitoring/log_analytics/**'
       - 'shared/acr/**'
@@ -36,6 +36,7 @@ jobs:
   # Detect changed layers 
 
   detect-changes:
+    if: github.actor == 'devsocket'
     name: Detect Changed Layers
     runs-on: ubuntu-latest
     outputs:
@@ -51,7 +52,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Detect changed paths
         id: filter
         uses: dorny/paths-filter@v3
@@ -81,7 +81,7 @@ jobs:
   apply-log-analytics:
     name: Apply / shared/monitoring/log_analytics
     needs: detect-changes
-    if: needs.detect-changes.outputs.log_analytics == 'true'
+    if: github.actor == 'devsocket' && needs.detect-changes.outputs.log_analytics == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -128,6 +128,7 @@ jobs:
     # always() allows this job to run even if apply-log-analytics was skipped
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.hub == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -169,6 +170,7 @@ jobs:
     needs: [detect-changes, apply-hub]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.spoke_dev == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -215,6 +217,7 @@ jobs:
     needs: [detect-changes, apply-spoke-dev]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.private_dns == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -260,6 +263,7 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.acr == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -301,6 +305,7 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.key_vault == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -346,6 +351,7 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.storage == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -391,6 +397,7 @@ jobs:
     needs: [detect-changes, apply-acr, apply-key-vault, apply-storage]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.appgw == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -436,6 +443,7 @@ jobs:
     needs: [detect-changes, apply-appgw]
     if: |
       always() &&
+      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.aks == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
