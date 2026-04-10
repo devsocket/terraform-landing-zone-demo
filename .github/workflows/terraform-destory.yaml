@@ -43,12 +43,12 @@ permissions:
   contents: read
 
 env:
-  TF_VERSION: "1.6.0"
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   ARM_USE_OIDC: "true"
-  TFSTATE_RG: ${{ secrets.TFSTATE_RG }}
-  TFSTATE_SA: ${{ secrets.TFSTATE_SA }}
+  TFSTATE_RG: ${{ vars.TFSTATE_RG }}
+  TFSTATE_SA: ${{ vars.TFSTATE_SA }}
+  TF_VERSION: ${{ vars.TF_VERSION }}
 
 jobs:
 
