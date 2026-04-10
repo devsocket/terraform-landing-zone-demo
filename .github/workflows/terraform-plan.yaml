@@ -1,9 +1,11 @@
 name: Terraform Plan
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - feature/*
+      - chore/*
+      - fix/*
     paths:
       - 'shared/monitoring/log_analytics/**'
       - 'shared/acr/**'
