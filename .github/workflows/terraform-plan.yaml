@@ -4,16 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'shared/monitoring/log_analytics/**'
-      - 'shared/acr/**'
-      - 'shared/key_vault/**'
-      - 'shared/storage/**'
-      - 'connectivity/hub/**'
-      - 'connectivity/spokes/**'
-      - 'connectivity/private-dns/**'
-      - 'apps/sample-app/dev/appgw/**'
-      - 'apps/sample-app/dev/aks/**'
 
 permissions:
   id-token: write
