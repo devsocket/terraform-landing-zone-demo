@@ -43,7 +43,7 @@ variable "aks_subnet_cidr" {
 
 variable "appgw_subnet_name" {
     description = "Application Gateway subnet name"
-    type  = String
+    type  = string
     default = "snet-appgw"
 }
 variable "appgw_subnet_cidr" {
