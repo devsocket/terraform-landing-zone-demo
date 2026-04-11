@@ -90,6 +90,7 @@ variable "tfstate_storage_account_name" {
 variable "tfstate_storage_container" {
     description = "Storage container name of the remote state storage account"
     type = string
+    default = "tfstate"
     #fill from bootstrap output
 }
 
