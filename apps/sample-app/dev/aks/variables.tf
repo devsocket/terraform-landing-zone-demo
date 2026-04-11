@@ -2,7 +2,7 @@
 variable "resource_group_name" {
   description = "Resource group of AKS deployment"
   type = string
-  default = rg-cc-aks-dev
+  default = "rg-cc-aks-dev"
 }
 
 variable "location" {
@@ -15,7 +15,7 @@ variable "location" {
 variable "cluster_name" {
     description ="Name of the AKS cluster"
     type = string
-    default = aks-cc-devsocket-dev
+    default = "aks-cc-devsocket-dev"
 }
 
 variable "dns_prefix" {
@@ -122,6 +122,11 @@ variable "tfstate_storage_container_name" {
     description = "Storage container name where the remote tfstate is stored"
     type = string
     default = "tfstate"
+}
+
+variable "tfstate_subscription_id" {
+    description = "Storage subscription id of the remote state storage account. This is required when the connectivity subscription where the remote state lives is different from the default subscription of the landing zone deployment"
+    type = string
 }
 
 #tags

@@ -5,6 +5,7 @@ data "terraform_remote_state" "hub" {
         resource_group_name   = var.tfstate_resource_group_name
         storage_account_name  = var.tfstate_storage_account_name
         container_name        = var.tfstate_storage_container_name
+        subscription_id = var.tfstate_subscription_id
         key                   = "connectivity/hub.tfstate"
     }
 }
@@ -16,6 +17,7 @@ data "terraform_remote_state" "spoke_dev" {
         resource_group_name   = var.tfstate_resource_group_name
         storage_account_name  = var.tfstate_storage_account_name
         container_name        = var.tfstate_storage_container_name
+        subscription_id = var.tfstate_subscription_id
         key                   = "connectivity/spokes/dev.tfstate"
     }
 }
@@ -30,13 +32,13 @@ module "private_dns" {
     dns_zones = var.dns_zones
 
     #Hub Vnet details pulled from remote state to create necessary virtual network links and private endpoint connections from the private DNS zones to the hub vnet
-    hub_vnet_id = data.terraform_remote_state.hub.outputs.hub_vnet_id
+    hub_vnet_id = data.terraform_remote_state.hub.outputs.vnet_id
     hub_vnet_link_name = "vnetlink-hub"
 
     # Spoke Vnet details pulled from remote state to create virtual network links from the private DNS zones to the spoke vnets
     # Add more spokes here as needed - just need to add the spoke key and vnet id to the spoke_vnet_links map
     spoke_vnet_links = {
-        "dev" = data.terraform_remote_state.spoke_dev.outputs.spoke_vnet_id
+        "dev" = data.terraform_remote_state.spoke_dev.outputs.vnet_id
     }
 
     enable_auto_registration = false

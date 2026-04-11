@@ -10,6 +10,7 @@ data "terraform_remote_state" "hub" {
         resource_group_name = var.tfstate_resource_group_name
         storage_account_name = var.tfstate_storage_account_name
         container_name = var.tfstate_container_name
+        subscription_id = var.tfstate_subscription_id
         key = "connectivity/hub.tfstate"
     }
 }
@@ -27,8 +28,8 @@ module "spoke_vnet" {
     #Subnets
     aks_subnet_name = var.aks_subnet_name
     aks_subnet_cidr = var.aks_subnet_cidr
-    appgw_subnet_name = var.appgw_subnet_name
-    app_subnet_cidr = var.appgw_subnet_cidr
+    gateway_subnet_name = var.appgw_subnet_name
+    gateway_subnet_cidr = var.appgw_subnet_cidr
     private_endpoints_subnet_name = var.private_endpoints_subnet_name
     private_endpoints_subnet_cidr = var.private_endpoints_subnet_cidr
 

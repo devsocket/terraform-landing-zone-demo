@@ -87,11 +87,16 @@ variable "tfstate_storage_account_name" {
     # fill from bootstrap output
 }
 
-variable "tfstate_storage_container" {
+variable "tfstate_container_name" {
     description = "Storage container name of the remote state storage account"
     type = string
     default = "tfstate"
     #fill from bootstrap output
+}
+
+variable "tfstate_subscription_id" {
+    description = "Storage subscription id of the remote state storage account. This is required when the connectivity subscription where the remote state lives is different from the default subscription of the landing zone deployment"
+    type = string
 }
 
 # Tags

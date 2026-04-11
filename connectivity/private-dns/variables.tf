@@ -1,6 +1,7 @@
 variable "location" {
     description = "Azure region where the private DNS zones will be deployed."
     type = string
+    default = "canadacentral"
 }
 
 variable "resource_group_name" {
@@ -33,6 +34,12 @@ variable "tfstate_storage_account_name" {
 
 variable "tfstate_storage_container_name" {
     description = "Blob Container name of teh terraform state storage account where the state is stored"
+    type = string
+    default = "tfstate"
+}
+
+variable "tfstate_subscription_id" {
+    description = "Storage subscription id of the remote state storage account. This is required when the connectivity subscription where the remote state lives is different from the default subscription of the landing zone deployment"
     type = string
 }
 
