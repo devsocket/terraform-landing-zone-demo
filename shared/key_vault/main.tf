@@ -26,7 +26,7 @@ data "terraform_remote_state" "log_analytics" {
 #Key Vault
 
 module "key_vault" {
-  source = "github.com/devsocket/terraform-common-modules/modules/app_platform/key_vault?ref=v0.2.0"
+  source = "github.com/devsocket/terraform-common-modules//modules/app_platform/key_vault?ref=v1.0.0"
 
   resource_group_name           = var.resource_group_name
   location                      = var.location

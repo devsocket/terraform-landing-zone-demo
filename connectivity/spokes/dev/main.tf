@@ -16,7 +16,7 @@ data "terraform_remote_state" "hub" {
 
 # Spoke Vnet
 module "spoke_vnet" {
-    source = "git::https://github.com/devsocket/terraform-common-modules.git/modules/connectivity/spoke_vnet?ref=v0.2.0"
+    source = "github.com/devsocket/terraform-common-modules//modules/connectivity/spoke_vnet?ref=v1.0.0"
 
     #Spoke Identity
     resource_group_name = var.resource_group_name

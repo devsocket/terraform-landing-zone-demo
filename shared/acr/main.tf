@@ -1,5 +1,5 @@
 module "acr" {
-      source = "github.com/devsocket/terraform-common-modules/modules/management/log_analytics?ref=v0.2.0"
+      source = "github.com/devsocket/terraform-common-modules//modules/management/log_analytics?ref=v1.0.0"
 
       resource_group_name = var.resource_group_name
       location = var.location
