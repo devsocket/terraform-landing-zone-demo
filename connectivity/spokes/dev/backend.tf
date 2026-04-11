@@ -10,7 +10,7 @@ terraform {
     backend "azurerm" {
       resource_group_name = "rg-tfstate-devsocket"
       storage_account_name = "stgtfstatedevsocket"
-      container_name       = "connectivty/tfstate"
+      container_name = "connectivity/tfstate"
       key = "connectivity/spokes/dev.tfstate"
     }
 }
