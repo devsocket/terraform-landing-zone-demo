@@ -1,7 +1,3 @@
-# Runs terraform apply on any layer changed by a push to main
-# Jobs run in dependency order — each layer waits for upstream layers
-# Only runs apply if the layer's files actually changed
-
 name: Terraform Apply
 
 on:
@@ -21,7 +17,8 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write    # ← upgraded from read — needed to delete branch
+  actions: read
 
 env:
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -33,11 +30,27 @@ env:
 
 jobs:
 
-  # Detect changed layers 
+  # ── Guard — only devsocket can trigger applies ────────────────────────────
+
+  guard:
+    name: Verify Actor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check actor
+        run: |
+          if [[ "${{ github.actor }}" != "devsocket" ]]; then
+            echo "❌ Unauthorized — only devsocket can trigger apply workflows"
+            exit 1
+          fi
+          echo "✅ Actor verified: ${{ github.actor }}"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Commit: ${{ github.sha }}"
+
+  # ── Detect changed layers ─────────────────────────────────────────────────
 
   detect-changes:
-    if: github.actor == 'devsocket'
     name: Detect Changed Layers
+    needs: guard
     runs-on: ubuntu-latest
     outputs:
       log_analytics: ${{ steps.filter.outputs.log_analytics }}
@@ -76,12 +89,12 @@ jobs:
             aks:
               - 'apps/sample-app/dev/aks/**'
 
-  # Layer 1 — Log Analytics
+  # ── Layer 1 — Log Analytics ───────────────────────────────────────────────
 
   apply-log-analytics:
     name: Apply / shared/monitoring/log_analytics
     needs: detect-changes
-    if: github.actor == 'devsocket' && needs.detect-changes.outputs.log_analytics == 'true'
+    if: needs.detect-changes.outputs.log_analytics == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -89,19 +102,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
-
       - name: Azure Login via OIDC
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.PLATFORM_SUB_ID }}
-
       - name: Terraform Init
         working-directory: shared/monitoring/log_analytics
         run: |
@@ -110,25 +120,20 @@ jobs:
             -backend-config="storage_account_name=${{ env.TFSTATE_SA }}" \
             -backend-config="container_name=tfstate" \
             -backend-config="subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
-
       - name: Terraform Plan
         working-directory: shared/monitoring/log_analytics
         run: terraform plan -input=false -no-color -out=tfplan
-
       - name: Terraform Apply
         working-directory: shared/monitoring/log_analytics
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 2 — Hub VNet
+  # ── Layer 2 — Hub VNet ────────────────────────────────────────────────────
 
   apply-hub:
     name: Apply / connectivity/hub
     needs: [detect-changes, apply-log-analytics]
-    # Run if hub changed OR if log_analytics just ran (downstream dependency)
-    # always() allows this job to run even if apply-log-analytics was skipped
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.hub == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -163,14 +168,13 @@ jobs:
         working-directory: connectivity/hub
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 3 — Spoke VNet
+  # ── Layer 3 — Spoke VNet ──────────────────────────────────────────────────
 
   apply-spoke-dev:
     name: Apply / connectivity/spokes/dev
     needs: [detect-changes, apply-hub]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.spoke_dev == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -204,20 +208,19 @@ jobs:
           terraform plan -input=false -no-color -out=tfplan \
             -var="tfstate_resource_group_name=${{ env.TFSTATE_RG }}" \
             -var="tfstate_storage_account_name=${{ env.TFSTATE_SA }}" \
-            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}" \
-            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}"
+            -var="tfstate_subscription_id=${{ secrets.PLATFORM_SUB_ID }}" \
+            -var="connectivity_subscription_id=${{ secrets.CONNECTIVITY_SUB_ID }}"
       - name: Terraform Apply
         working-directory: connectivity/spokes/dev
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 3b — Private DNS
+  # ── Layer 3b — Private DNS ────────────────────────────────────────────────
 
   apply-private-dns:
     name: Apply / connectivity/private-dns
     needs: [detect-changes, apply-spoke-dev]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.private_dns == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -256,14 +259,13 @@ jobs:
         working-directory: connectivity/private-dns
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 4 — ACR
+  # ── Layer 4 — ACR ─────────────────────────────────────────────────────────
 
   apply-acr:
     name: Apply / shared/acr
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.acr == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -298,14 +300,13 @@ jobs:
         working-directory: shared/acr
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 4b — Key Vault
+  # ── Layer 4b — Key Vault ──────────────────────────────────────────────────
 
   apply-key-vault:
     name: Apply / shared/key_vault
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.key_vault == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -344,14 +345,13 @@ jobs:
         working-directory: shared/key_vault
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 4c — Storage
+  # ── Layer 4c — Storage ────────────────────────────────────────────────────
 
   apply-storage:
     name: Apply / shared/storage
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.storage == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -390,14 +390,13 @@ jobs:
         working-directory: shared/storage
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 5 — App Gateway
+  # ── Layer 5 — App Gateway ─────────────────────────────────────────────────
 
   apply-appgw:
     name: Apply / apps/sample-app/dev/appgw
     needs: [detect-changes, apply-acr, apply-key-vault, apply-storage]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.appgw == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -436,14 +435,13 @@ jobs:
         working-directory: apps/sample-app/dev/appgw
         run: terraform apply -input=false -no-color tfplan
 
-  # Layer 5b — AKS
+  # ── Layer 5b — AKS ───────────────────────────────────────────────────────
 
   apply-aks:
     name: Apply / apps/sample-app/dev/aks
     needs: [detect-changes, apply-appgw]
     if: |
       always() &&
-      github.actor == 'devsocket' && 
       needs.detect-changes.outputs.aks == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
@@ -481,3 +479,39 @@ jobs:
       - name: Terraform Apply
         working-directory: apps/sample-app/dev/aks
         run: terraform apply -input=false -no-color tfplan
+
+  # ── Cleanup — delete upgrade branch after all layers complete ─────────────
+
+  cleanup:
+    name: Delete Branch
+    needs:
+      - apply-log-analytics
+      - apply-hub
+      - apply-spoke-dev
+      - apply-private-dns
+      - apply-acr
+      - apply-key-vault
+      - apply-storage
+      - apply-appgw
+      - apply-aks
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete upgrade branch
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const branch = context.ref.replace('refs/heads/', '');
+            console.log(`Deleting branch: ${branch}`);
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch}`
+              });
+              console.log(`✅ Branch ${branch} deleted successfully`);
+            } catch (error) {
+              console.log(`⚠️ Could not delete branch: ${error.message}`);
+            }
