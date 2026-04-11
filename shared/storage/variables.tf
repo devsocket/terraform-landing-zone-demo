@@ -31,7 +31,7 @@ variable "account_replication_type" {
 variable "account_kind" {
   description = "Storage account kind. StandardV2 is recommended for general purposes."
     type        = string
-    default = "StandardV2"
+    default = "StorageV2"
 }
 
 variable "access_tier" {
@@ -50,7 +50,7 @@ variable "https_traffic_only_enabled" {
 variable "min_tls_version" {
   description = "Minimum TLS version. TLS1.2 is the current recommended version."
     type        = string
-    default = "TLS1.2"
+    default = "TLS1_2"
 }
 
 variable "public_network_access_enabled" {
@@ -113,6 +113,11 @@ variable "tfstate_container_name" {
   description = "Blob container name for Terraform state."
   type        = string
   default     = "tfstate"
+}
+
+variable "tfstate_subscription_id" {
+    description = "Storage subscription id of the remote state storage account. This is required when the connectivity subscription where the remote state lives is different from the default subscription of the landing zone deployment"
+    type = string
 }
 
 # tags

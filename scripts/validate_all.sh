@@ -14,8 +14,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Helpers
-SCRIPT_DIR = "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT = "$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ERRORS=()
 WARNINGS=()
 PASS=0
@@ -29,31 +29,33 @@ log_error()   { echo -e "${RED}[ERROR]${NC} $1"; ERRORS+=("$1"); FAIL=$((FAIL+1)
 # Layers
 # All deployable root modules in landing zone repo in dependency order
 LAYERS=(
-    "shared/monitoring"
-    "shared/key_vault"
-    "shared/acr"
-    "shared/storage"
+    "shared/monitoring/log_analytics"
     "connectivity/hub"
     "connectivity/spokes/dev"
-    "apps/sample-app/dev/aks"
+    "connectivity/private-dns"
+    "shared/acr"
+    "shared/key_vault"
+    "shared/storage"
     "apps/sample-app/dev/appgw"
+    "apps/sample-app/dev/aks"
 )
 
 # Format Check
 fmt_check() {
-    local path = "$1"
-    local full_path = "$REPO_ROOT/$path"
+    local path="$1"
+    local full_path="$REPO_ROOT/$path"
 
     if terraform fmt -check -recursive "$full_path" > /dev/null 2>&1; then
         log_success "fmt OK: $path"
     else
         log_error "fmt FAIL: $path -run 'terraform fmt -recursive $full_path' to fix"
+    fi
 }
 
 # Validation
 validate_layer(){
-    local path = "$1"
-    local full_path = "$REPO_ROOT/$path"
+    local path="$1"
+    local full_path="$REPO_ROOT/$path"
 
     if [[ ! -d "$full_path" ]]; then
         log_warn "Not found, skipping: $path"
@@ -67,11 +69,11 @@ validate_layer(){
 
     if ! terraform init \
         -backend=false \
-        -input = false \
+        -input=false \
         -no-color > /tmp/tf_init_validate_$$.log 2>&1; then
         log_error "init FAIL: $path"
         cat /tmp/tf_init_validate_$$.log
-        cd "$ROOT_REPO"
+        cd "$REPO_ROOT"
         return 
     fi
 
@@ -133,7 +135,7 @@ main() {
     printf "RESULTS: ${GREEN}%d passed${NC}, ${RED}%d failed${NC}%-24s||\n" "$PASS" "$FAIL" ""
     echo ""
 
-    if[[ ${WARNINGS[@]} -gt 0 ]]; then
+    if [[ ${#WARNINGS[@]} -gt 0 ]]; then
         echo ""
         log_warn "Warnings:"
         for w in "${WARNINGS[@]}";do
@@ -144,7 +146,7 @@ main() {
     if [[ ${#ERRORS[@]} -gt 0 ]]; then
         echo ""
         log_error "Failed checks:"
-        for e in "${ERRORS[@]}"; do
+        for err in "${ERRORS[@]}"; do
             echo -e " ${RED}x${NC} $err"
         done
         echo ""

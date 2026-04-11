@@ -123,6 +123,7 @@ destroy_layer() {
       -backend-config="resource_group_name=${TFSTATE_RG}" \
       -backend-config="storage_account_name=${TFSTATE_SA}" \
       -backend-config="container_name=tfstate" \
+      -backend-config="subscription_id=${PLATFORM_SUB_ID}" \
       > /tmp/tf_init_destroy_$$.log 2>&1; then
     log_error "terraform init failed for $layer_path"
     cat /tmp/tf_init_destroy_$$.log
@@ -210,7 +211,7 @@ main() {
   echo ""
 
   # Common remote state vars
-  RS_VARS="-var tfstate_resource_group_name=$TFSTATE_RG -var tfstate_storage_account_name=$TFSTATE_SA"
+  RS_VARS="-var tfstate_resource_group_name=${TFSTATE_RG} -var tfstate_storage_account_name=${TFSTATE_SA} -var tfstate_subscription_id=${PLATFORM_SUB_ID}"
 
   # ── Phase 5 — App Layer (destroy first) ──────────────────────────────────
 

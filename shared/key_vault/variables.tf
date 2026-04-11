@@ -48,7 +48,7 @@ variable "role_assignments" {
   description = "RBAC role assignments on the Key Vault. Populate after AKS workload identity is deployed."
   type = map(object({
     role         = string
-    principal_id = string
+    principle_id = string
   }))
   default = {}
 }
@@ -70,6 +70,11 @@ variable "tfstate_container_name" {
   description = "Blob container name for Terraform state."
   type        = string
   default     = "tfstate"
+}
+
+variable "tfstate_subscription_id" {
+    description = "Storage subscription id of the remote state storage account. This is required when the connectivity subscription where the remote state lives is different from the default subscription of the landing zone deployment"
+    type = string
 }
 
 # ── Tags ──────────────────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ output "appgw_subnet_id" {
 
 output "appgw_subnet_cidr" {
     description = "Applicationo Gateway subnet cidr"
-    value = module.spoke_vnet.gateway_subnet_cidr
+    value = module.spoke_vnet.appgw_subnet_cidr
 }
 output "private_endpoints_subnet_id" {
     description = "Private Endpoints subnet id"

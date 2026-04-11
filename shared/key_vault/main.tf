@@ -19,6 +19,7 @@ data "terraform_remote_state" "log_analytics" {
     resource_group_name  = var.tfstate_resource_group_name
     storage_account_name = var.tfstate_storage_account_name
     container_name       = var.tfstate_container_name
+    subscription_id = var.tfstate_subscription_id
     key                  = "shared/monitoring/log-analytics.tfstate"
   }
 }
@@ -31,7 +32,7 @@ module "key_vault" {
   resource_group_name           = var.resource_group_name
   location                      = var.location
   key_vault_name                = var.key_vault_name
-  sku_name                      = var.sku_name
+  sku                      = var.sku_name
   tenant_id                     = data.azurerm_client_config.current.tenant_id
   soft_delete_retention_days    = var.soft_delete_retention_days
   purge_protection_enabled      = var.purge_protection_enabled

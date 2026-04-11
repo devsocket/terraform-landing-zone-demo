@@ -25,7 +25,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # config
-SCRIPT_DIR = "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ERRORS=()
 DRY_RUN=false
@@ -33,7 +33,7 @@ FROM_LAYER=""
 START_DEPLOYING=true
 
 # Args
-while [[ $# -gt 0]]; do
+while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)
             DRY_RUN=true
@@ -62,13 +62,13 @@ log_step()    { echo -e "\n${CYAN}══ $1 ══${NC}"; }
 check_env() {
     local missing=0
     for var in PLATFORM_SUB_ID CONNECTIVITY_SUB_ID LZ_SHARED_SUB_ID LZ_DEV_SUB_ID TFSTATE_RG TFSTATE_SA; do
-        if [[ -z "${var}" ]]; then
+        if [[ -z "${!var}" ]]; then
             log_error "Required env var $var is not set"
             missing=1
         fi
     done
 
-    if [[$missing -eq 1]]; then
+    if [[ $missing -eq 1 ]]; then
         echo ""
         echo "Set all required env vars before running:"
         echo "  export PLATFORM_SUB_ID=<id>"
@@ -89,8 +89,8 @@ deploy_layer(){
     local full_path="$REPO_ROOT/$layer_path"
 
     # Handle --from flag - skip layers before the specified one
-    if [["$START_DEPLOYING" == "false" ]]; then
-        if [[ "$layer_path" == "$FROM_LAYER"]]; then
+    if [[ "$START_DEPLOYING" == "false" ]]; then
+        if [[ "$layer_path" == "$FROM_LAYER" ]]; then
             START_DEPLOYING=true
             log_info "Resuming from: $layer_path"
         else
@@ -118,6 +118,7 @@ deploy_layer(){
         -backend-config="resource_group_name=${TFSTATE_RG}" \
         -backend-config="storage_account_name=${TFSTATE_SA}" \
         -backend-config="container_name=tfstate" \
+        -backend-config="subscription_id=${PLATFORM_SUB_ID}" \
         > /tmp/tf_init_$$.log 2>&1; then
     log_error "terraform init failed for $layer_path"
     cat /tmp/tf_init_$$.log
@@ -188,16 +189,17 @@ main() {
         log_warn "This will deploy all layers to azure."
         log_warn "Type 'deploy' to confirm or Ctrl+C to cancel."
 
-        read -c confirmation
+        read -r confirmation
         if [[ "$confirmation" != "deploy" ]]; then
             log_info "Deployment cancelled by user."
+            exit 0
         fi
     fi
 
     echo ""
 
     # common remote state vars passed to layers that need them
-    RS_VARS="-var=remote_state_resource_group=${TFSTATE_RG} -var=remote_state_storage_account=${TFSTATE_SA}"
+    RS_VARS="-var tfstate_resource_group_name=${TFSTATE_RG} -var tfstate_storage_account_name=${TFSTATE_SA} -var tfstate_subscription_id=${PLATFORM_SUB_ID}"
 
     # - Phase 1 - Monitoring
 
@@ -214,7 +216,7 @@ main() {
     deploy_layer \
         "connectivity/spokes/dev" \
         "$LZ_DEV_SUB_ID" \
-        "$RS_VARS -var connectivity-subscription_id=${CONNECTIVITY_SUB_ID}"
+        "$RS_VARS -var connectivity_subscription_id=${CONNECTIVITY_SUB_ID}"
 
     # phase 3b - private DNS
     deploy_layer \
@@ -224,14 +226,13 @@ main() {
     
     # Phase 4 - shared services
     deploy_layer \
-        "shared/key_valut" \
+        "shared/key_vault" \
         "$LZ_SHARED_SUB_ID" \
         "$RS_VARS"
     
     deploy_layer \
         "shared/acr" \
-        "$LZ_SHARED_SUB_ID" \
-        "$RS_VARS"
+        "$LZ_SHARED_SUB_ID"
 
     deploy_layer \
         "shared/storage" \
