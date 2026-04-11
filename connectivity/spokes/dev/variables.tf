@@ -43,7 +43,7 @@ variable "aks_subnet_cidr" {
 
 variable "appgw_subnet_name" {
     description = "Application Gateway subnet name"
-    type  = String
+    type  = string
     default = "snet-appgw"
 }
 variable "appgw_subnet_cidr" {
@@ -90,6 +90,7 @@ variable "tfstate_storage_account_name" {
 variable "tfstate_storage_container" {
     description = "Storage container name of the remote state storage account"
     type = string
+    default = "tfstate"
     #fill from bootstrap output
 }
 
