@@ -64,8 +64,7 @@ jobs:
 
   plan-log-analytics:
     name: Plan / shared/monitoring/log_analytics
-    needs: detect-changes
-    if: needs.detect-changes.outputs.log_analytics == 'true'
+    needs: detect-changes  
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.PLATFORM_SUB_ID }}
@@ -126,7 +125,6 @@ jobs:
   plan-hub:
     name: Plan / connectivity/hub
     needs: detect-changes
-    if: needs.detect-changes.outputs.hub == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
@@ -185,7 +183,6 @@ jobs:
   plan-spoke-dev:
     name: Plan / connectivity/spokes/dev
     needs: detect-changes
-    if: needs.detect-changes.outputs.spoke_dev == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
@@ -249,7 +246,6 @@ jobs:
   plan-private-dns:
     name: Plan / connectivity/private-dns
     needs: detect-changes
-    if: needs.detect-changes.outputs.private_dns == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.CONNECTIVITY_SUB_ID }}
@@ -312,7 +308,6 @@ jobs:
   plan-acr:
     name: Plan / shared/acr
     needs: detect-changes
-    if: needs.detect-changes.outputs.acr == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
@@ -371,7 +366,6 @@ jobs:
   plan-key-vault:
     name: Plan / shared/key_vault
     needs: detect-changes
-    if: needs.detect-changes.outputs.key_vault == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
@@ -434,7 +428,6 @@ jobs:
   plan-storage:
     name: Plan / shared/storage
     needs: detect-changes
-    if: needs.detect-changes.outputs.storage == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_SHARED_SUB_ID }}
@@ -497,7 +490,6 @@ jobs:
   plan-appgw:
     name: Plan / apps/sample-app/dev/appgw
     needs: detect-changes
-    if: needs.detect-changes.outputs.appgw == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
@@ -560,7 +552,6 @@ jobs:
   plan-aks:
     name: Plan / apps/sample-app/dev/aks
     needs: detect-changes
-    if: needs.detect-changes.outputs.aks == 'true'
     runs-on: ubuntu-latest
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.LZ_DEV_SUB_ID }}
