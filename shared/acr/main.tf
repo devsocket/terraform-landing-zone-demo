@@ -1,5 +1,5 @@
 module "acr" {
-      source = "github.com/devsocket/terraform-common-modules//modules/app_platform/acr?ref=v1.0.0"
+      source = "github.com/devsocket/terraform-common-modules//modules/app_platform/acr"
 
       resource_group_name = var.resource_group_name
       location = var.location
