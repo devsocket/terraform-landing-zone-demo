@@ -7,6 +7,7 @@ data "terraform_remote_state" "spoke_dev" {
     config = {
         resource_group_name  = var.tfstate_resource_group_name
         storage_account_name = var.tfstate_storage_account_name
+        subscription_id = var.tfstate_subscription_id
         container_name       = var.tfstate_container_name
         key                  = "connectivity/spokes/dev.tfstate"
 }
@@ -19,6 +20,7 @@ data "terraform_remote_state" "log_analytics" {
     config = {
         resource_group_name  = var.tfstate_resource_group_name
         storage_account_name = var.tfstate_storage_account_name
+        subscription_id = var.tfstate_subscription_id
         container_name       = var.tfstate_container_name
         subscription_id = var.tfstate_subscription_id
         key                  = "shared/monitoring/log-analytics.tfstate"
