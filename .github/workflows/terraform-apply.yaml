@@ -387,7 +387,6 @@ jobs:
     needs: [detect-changes, apply-acr, apply-key-vault, apply-storage]
     if: |
       always() &&
-      needs.detect-changes.outputs.appgw == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -432,7 +431,6 @@ jobs:
     needs: [detect-changes, apply-appgw]
     if: |
       always() &&
-      needs.detect-changes.outputs.aks == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
