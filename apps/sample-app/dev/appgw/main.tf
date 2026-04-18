@@ -29,7 +29,7 @@ data "terraform_remote_state" "log_analytics" {
 
 # App Gateway
 module "appgw" {
-    source = "github.com/devsocket/terraform-common-modules//modules/app_platform/app_gateway_waf_agic?ref=v1.0.0"
+    source = "github.com/devsocket/terraform-common-modules//modules/app_platform/app_gateway_waf_agic"
     resource_group_name = var.resource_group_name
     location = var.location
     app_gateway_name = var.app_gateway_name
