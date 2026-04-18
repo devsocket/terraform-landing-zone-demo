@@ -29,7 +29,9 @@ It models a setup where:
 
 ## High-level architecture
 
-> A proper diagram is included in `/docs` (recommended starting point)
+
+![Azure Landing Zone Architecture](/docs/architecture.png)
+> Full-resolution diagram is available at '/docs/architecture.png'
 
 At a high level, the setup includes:
 
