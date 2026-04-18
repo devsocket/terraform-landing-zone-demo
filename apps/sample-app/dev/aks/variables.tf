@@ -53,7 +53,7 @@ variable "node_count" {
 variable "vm_size" {
     description = "VM type to deploy in the node"
     type = string
-    default = "Standard_B2s"
+    default = "standard_b2s_v2"
 }
 
 variable "os_disk_size_gb" {
