@@ -84,7 +84,7 @@ jobs:
   apply-log-analytics:
     name: Apply / shared/monitoring/log_analytics
     needs: detect-changes
-    if: needs.detect-changes.outputs.log_analytics == 'true'
+    #if: needs.detect-changes.outputs.log_analytics == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -124,7 +124,6 @@ jobs:
     needs: [detect-changes, apply-log-analytics]
     if: |
       always() &&
-      needs.detect-changes.outputs.hub == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -165,7 +164,6 @@ jobs:
     needs: [detect-changes, apply-hub]
     if: |
       always() &&
-      needs.detect-changes.outputs.spoke_dev == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -211,7 +209,6 @@ jobs:
     needs: [detect-changes, apply-spoke-dev]
     if: |
       always() &&
-      needs.detect-changes.outputs.private_dns == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -256,7 +253,6 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      needs.detect-changes.outputs.acr == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -297,7 +293,6 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      needs.detect-changes.outputs.key_vault == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
@@ -342,7 +337,6 @@ jobs:
     needs: [detect-changes, apply-private-dns]
     if: |
       always() &&
-      needs.detect-changes.outputs.storage == 'true' &&
       !contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     environment: production
