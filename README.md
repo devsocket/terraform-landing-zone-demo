@@ -191,7 +191,7 @@ Those can be layered on top, but would make the example harder to run and unders
 
 Full deployment steps and scripts are in:
 
-👉 `IMPLEMENTATION_DETAILS.md`
+👉 [IMPLEMENTATION_DETAILS.md](IMPLEMENTATION.md)
 
 That doc covers:
 
