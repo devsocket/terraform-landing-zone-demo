@@ -67,7 +67,7 @@ module "aks" {
 
     # AGIC - app gateway id from apphw remote state, not hardcoded
     enable_agic = var.enable_agic
-    app_gateway_id = data.terraform_remote_state.appgw.outputs.appgw_id
+    app_gateway_id = data.terraform_remote_state.appgw.outputs.app_gateway_id
 
     enable_workload_identity = var.enable_workload_identity
 
