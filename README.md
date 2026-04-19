@@ -201,7 +201,13 @@ That doc covers:
 * CI/CD usage
 
 ---
+## Deployment Evidence
 
+Screenshots from recent live deployment can be found here
+
+👉[DEPLOYMENT.md](DEPLOYMENT.md)
+
+---
 ## Final note
 
 This repo is meant to reflect how I would actually structure a landing zone for a real project — not just pass an exam or match a reference diagram.
